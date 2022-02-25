@@ -25,10 +25,10 @@ headers = {'X-Booked-SessionToken':auth['sessionToken'], 'X-Booked-UserId':auth[
 groupsURI = config['data']['booked_uri'] + "/Groups"
 r = requests.get(groupsURI, headers=headers)
 
-bookedGroups = r.json()
+lbGroups = r.json()
 
 # Parse the group names to find the mapping for stream Common Module IDs
-for group in bookedGroups['groups']:
+for group in lbGroups['groups']:
 	groupName = group['name']
 	if "|" in groupName:
 		stream_id = groupName.split('|')[0].strip()
@@ -38,7 +38,6 @@ for group in bookedGroups['groups']:
 gradebook = untangle.parse('testdata.xml')
 
 memberships = {}
-
 
 for result in gradebook.results.result:
 	if result.score == '100 %':
@@ -56,7 +55,6 @@ for user in r.json()['users']:
 		updateUserURI = config['data']['booked_uri'] + "/Users/" + user['id']
 		user['groups'] = memberships[user['userName']]
 		r = requests.post(updateUserURI, data=json.dumps(user), headers=headers)
-		print(r.text)
 
 ## Sign out of the session
 signoutURI = config['data']['booked_uri'] + "/Authentication/SignOut"
