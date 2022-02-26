@@ -5,6 +5,11 @@ import untangle
 import requests
 import json
 import time
+from datetime import datetime
+
+import pprint
+
+pp = pprint.PrettyPrinter(indent=4)
 
 config = configparser.ConfigParser(interpolation=None)
 config.read('config/config.ini')
@@ -56,9 +61,17 @@ while True:
 
 	for user in r.json()['users']:
 		if user['userName'] in memberships:
-			updateUserURI = config['data']['booked_uri'] + "/Users/" + user['id']
-			user['groups'] = memberships[user['userName']]
-			r = requests.post(updateUserURI, data=json.dumps(user), headers=headers)
+			getUserURI = config['data']['booked_uri'] + "/Users/" + user['id']
+			r = requests.get(getUserURI, headers=headers)
+			userDetails = r.json()
+			groups = [int(d['id']) for d in userDetails['groups']]
+			groups.sort()
+			memberships[user['userName']].sort()
+			if not groups == memberships[user['userName']]:
+				updateUserURI = config['data']['booked_uri'] + "/Users/" + user['id']
+				user['groups'] = memberships[user['userName']]
+				r = requests.post(updateUserURI, data=json.dumps(user), headers=headers)
+				print(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\tUpdated permissions for " + user['userName'])
 
 	## Sign out of the session
 	signoutURI = config['data']['booked_uri'] + "/Authentication/SignOut"
