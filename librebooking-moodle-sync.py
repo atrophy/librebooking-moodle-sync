@@ -17,7 +17,6 @@ interval = int(config['schedule']['interval'])
 
 print("LibreBooking - Moodle Synchroniser Started")
 print("Polling Interval set to: " + str(interval) + " seconds")
-print("------------------------------------------------------------")
 
 while True:
 	memberships = {}
@@ -43,8 +42,7 @@ while True:
 			stream_id = groupName.split('|')[0].strip()
 			stream_mapping[stream_id] = group['id']
 
-	#gradebook = untangle.parse(config['data']['stream_uri'])
-	gradebook = untangle.parse('testdata.xml')
+	gradebook = untangle.parse(config['data']['stream_uri'])
 
 	memberships = {}
 
