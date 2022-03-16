@@ -70,7 +70,7 @@ while True:
 				user['groups'] = memberships[user['userName']]
 				r = requests.post(updateUserURI, data=json.dumps(user), headers=headers)
 				groups_strings = [str(gid) for gid in user['groups']]
-				print(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\tUpdated permissions for " + user['userName'] + " " + ", ".join(groups_strings))
+				print(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\tUpdated permissions for " + user['userName'] + " (GIDs: " + ", ".join(groups_strings) + ")")
 
 	## Sign out of the session
 	signoutURI = config['data']['booked_uri'] + "/Authentication/SignOut"
