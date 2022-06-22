@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+## Synchronizes LibreBooking Groups using Moodle Assessment Results
+
 import configparser
 import untangle
 import requests
