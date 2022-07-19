@@ -16,9 +16,9 @@ pp = pprint.PrettyPrinter(indent=4)
 config = configparser.ConfigParser(interpolation=None)
 config.read('config/config.ini')
 interval = int(config['schedule']['interval'])
-
 print("LibreBooking - Moodle Synchroniser Started")
 print("Polling Interval set to: " + str(interval) + " seconds")
+print("All enrolled users will be added to: " + str(config['data']['all_enrolled_group']))
 
 while True:
 	memberships = {}
@@ -40,6 +40,8 @@ while True:
 	# Parse the group names to find the mapping for stream Common Module IDs
 	for group in lbGroups['groups']:
 		groupName = group['name']
+		if groupName == config['data']['all_enrolled_group']:
+			stream_mapping['enrolled'] = group['id']
 		if "|" in groupName:
 			stream_id = groupName.split('|')[0].strip()
 			stream_mapping[stream_id] = group['id']
@@ -49,11 +51,10 @@ while True:
 	memberships = {}
 
 	for result in gradebook.results.result:
+		if not result.student.cdata in memberships:
+			memberships[result.student.cdata] = [stream_mapping['enrolled']]
 		if result.score == '100 %':
 			if result.assignment.cdata in stream_mapping:
-				if not result.student.cdata in memberships:
-					memberships[result.student.cdata] = []
-
 				memberships[result.student.cdata].append(int(stream_mapping[result.assignment.cdata]))
 
 	getAllUsersURI = config['data']['booked_uri'] + "/Users/"
