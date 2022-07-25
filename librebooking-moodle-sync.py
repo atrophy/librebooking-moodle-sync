@@ -74,7 +74,7 @@ def sync_memberships():
 				memberships[user['userName']]['groups'].sort()
 				if not groups == memberships[user['userName']]['groups']:
 					updateUserURI = config['data']['librebooking_uri'] + "/Users/" + user['id']
-					user['groups' = memberships[user['userName']]['groups']
+					user['groups'] = memberships[user['userName']]['groups']
 					r = requests.post(updateUserURI, data=json.dumps(user), headers=headers)
 					groups_strings = [str(gid) for gid in user['groups']]
 					print(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\tUpdated permissions for " + user['userName'] + " (GIDs: " + ", ".join(groups_strings) + ")")
