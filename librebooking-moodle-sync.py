@@ -15,10 +15,13 @@ config = configparser.ConfigParser(interpolation=None)
 config.read('config/config.ini')
 
 gradebook_interval = int(config['schedule']['gradebook_interval'])
+sync_interval = int(config['schedule']['librebooking_interval'])
+full_resync = int(config['schedule']['full_resync'])
 
 cmid_mapping = {}	# Maps common-module IDs to LibreBooking Groups
 memberships = {}	# Holds group membership data for all enrolled users
 
+syncedUsers = 0
 
 def update_cmid_mapping():
 	headers = authenticate()
@@ -42,12 +45,17 @@ def update_memberships():
 		print("Error connecting to Moodle")
 		return
 
+	changedCount = 0
+
 	for result in gradebook.results.result:
 		if not result.student.cdata in memberships:
-			memberships[result.student.cdata] = [cmid_mapping['enrolled']]
+			memberships[result.student.cdata] = { 'groups':[cmid_mapping['enrolled']] }
+			memberships[result.student.cdata]['changed'] = True
 		if result.score == '100 %':
 			if result.assignment.cdata in cmid_mapping:
-				memberships[result.student.cdata].append(int(cmid_mapping[result.assignment.cdata]))
+				if int(cmid_mapping[result.assignment.cdata]) not in memberships[result.student.cdata]['groups']:
+					memberships[result.student.cdata]['groups'].append(int(cmid_mapping[result.assignment.cdata]))
+					memberships[result.student.cdata]['changed'] = True
 
 def sync_memberships():
 	headers = authenticate()
@@ -56,19 +64,25 @@ def sync_memberships():
 
 	for user in r.json()['users']:
 		if user['userName'] in memberships:
-			getUserURI = config['data']['booked_uri'] + "/Users/" + user['id']
-			r = requests.get(getUserURI, headers=headers)
-			userDetails = r.json()
-			groups = [int(d['id']) for d in userDetails['groups']]
-			groups.sort()
-			memberships[user['userName']].sort()
-			if not groups == memberships[user['userName']]:
-				updateUserURI = config['data']['booked_uri'] + "/Users/" + user['id']
-				user['groups'] = memberships[user['userName']]
-				r = requests.post(updateUserURI, data=json.dumps(user), headers=headers)
-				groups_strings = [str(gid) for gid in user['groups']]
-				print(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\tUpdated permissions for " + user['userName'] + " (GIDs: " + ", ".join(groups_strings) + ")")
+			if memberships[user['userName']]['changed']:
+				memberships[user['userName']]['changed'] = False
+				getUserURI = config['data']['booked_uri'] + "/Users/" + user['id']
+				r = requests.get(getUserURI, headers=headers)
+				userDetails = r.json()
+				groups = [int(d['id']) for d in userDetails['groups']]
+				groups.sort()
+				memberships[user['userName']]['groups'].sort()
+				if not groups == memberships[user['userName']]['groups']:
+					updateUserURI = config['data']['booked_uri'] + "/Users/" + user['id']
+					user['groups'] = memberships[user['userName']]['groups']
+					r = requests.post(updateUserURI, data=json.dumps(user), headers=headers)
+					groups_strings = [str(gid) for gid in user['groups']]
+					print(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\tUpdated permissions for " + user['userName'] + " (GIDs: " + ", ".join(groups_strings) + ")")
 	signout(headers)
+
+def stale_all_memberships():
+	for user in memberships:
+		memberships[user]['changed'] = True
 
 ## LibreBooking Authentication Routines
 def authenticate():
@@ -90,20 +104,20 @@ def signout(headers):
 
 schedule.every().day.at("23:30").do(update_cmid_mapping)
 schedule.every(gradebook_interval).minutes.do(update_memberships)
+schedule.every(sync_interval).minutes.do(sync_memberships)
+schedule.every(full_resync).hours.do(stale_all_memberships)
 
 print("Moodle -> Librebooking Sync Starting")
 print("Gradebook pull interval:",gradebook_interval,"minutes")
-
+print("LibreBooking sync interval:",sync_interval,"minutes")
 # Initial population of the CMID map
 print("Initial pull for CMID map from LibreBooking: ", end='')
 update_cmid_mapping()
-pp.pprint(cmid_mapping)
-
+print(len(cmid_mapping),"group mappings retrieved")
 # Initial population of memberships
 print("Initial pull for memberships list from Moodle: ", end='')
 update_memberships()
 print(len(memberships), "users retrieved")
-
 
 ##
 ## Main Loop
