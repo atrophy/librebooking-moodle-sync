@@ -1,83 +1,130 @@
 #!/usr/bin/python3
 
-## Synchronizes LibreBooking Groups using Moodle Assessment Results
-
+import schedule
+import time
 import configparser
 import untangle
 import requests
 import json
-import time
 from datetime import datetime
 
 import pprint
-
 pp = pprint.PrettyPrinter(indent=4)
 
 config = configparser.ConfigParser(interpolation=None)
 config.read('config/config.ini')
-interval = int(config['schedule']['interval'])
-print("LibreBooking - Moodle Synchroniser Started")
-print("Polling Interval set to: " + str(interval) + " seconds")
-print("All enrolled users will be added to: " + str(config['data']['all_enrolled_group']))
 
-while True:
-	memberships = {}
-	stream_mapping = {}
+gradebook_interval = int(config['schedule']['gradebook_interval'])
+sync_interval = int(config['schedule']['librebooking_interval'])
+full_resync = int(config['schedule']['full_resync'])
 
-	credentials = {'username':config['booked_credentials']['username'], 'password': config['booked_credentials']['password']}
+cmid_mapping = {}	# Maps common-module IDs to LibreBooking Groups
+memberships = {}	# Holds group membership data for all enrolled users
 
-	authURI = config['data']['booked_uri'] + "/Authentication/Authenticate"
-	r = requests.post(authURI, data=json.dumps(credentials))
-	auth = r.json()
+syncedUsers = 0
 
-	headers = {'X-Booked-SessionToken':auth['sessionToken'], 'X-Booked-UserId':auth['userId']}
-
-	groupsURI = config['data']['booked_uri'] + "/Groups"
+def update_cmid_mapping():
+	headers = authenticate()
+	groupsURI = config['data']['librebooking_uri'] + "/Groups"
 	r = requests.get(groupsURI, headers=headers)
 
 	lbGroups = r.json()
 
-	# Parse the group names to find the mapping for stream Common Module IDs
+	# Parse the group names to find the mapping for Moodle Common Module IDs or Special Keywords
 	for group in lbGroups['groups']:
 		groupName = group['name']
-		if groupName == config['data']['all_enrolled_group']:
-			stream_mapping['enrolled'] = int(group['id'])
 		if "|" in groupName:
-			stream_id = groupName.split('|')[0].strip()
-			stream_mapping[stream_id] = int(group['id'])
+			cmid = groupName.split('|')[0].strip().lower()
+			cmid_mapping[cmid] = int(group['id'])
+	signout(headers)
 
-	gradebook = untangle.parse(config['data']['stream_uri'])
+def update_memberships():
+	try:
+		gradebook = untangle.parse(config['data']['gradebook_uri'])
+	except:
+		print("Error connecting to Moodle")
+		return
 
-	memberships = {}
+	changedCount = 0
 
 	for result in gradebook.results.result:
 		if not result.student.cdata in memberships:
-			memberships[result.student.cdata] = [stream_mapping['enrolled']]
+			memberships[result.student.cdata] = { 'groups':[cmid_mapping['enrolled']] }
+			memberships[result.student.cdata]['changed'] = True
 		if result.score == '100 %':
-			if result.assignment.cdata in stream_mapping:
-				memberships[result.student.cdata].append(int(stream_mapping[result.assignment.cdata]))
+			if result.assignment.cdata in cmid_mapping:
+				if int(cmid_mapping[result.assignment.cdata]) not in memberships[result.student.cdata]['groups']:
+					memberships[result.student.cdata]['groups'].append(int(cmid_mapping[result.assignment.cdata]))
+					memberships[result.student.cdata]['changed'] = True
 
-	getAllUsersURI = config['data']['booked_uri'] + "/Users/"
+def sync_memberships():
+	headers = authenticate()
+	getAllUsersURI = config['data']['librebooking_uri'] + "/Users/"
 	r = requests.get(getAllUsersURI, headers=headers)
 
-	for user in r.json()['users']:
-		if user['userName'] in memberships:
-			getUserURI = config['data']['booked_uri'] + "/Users/" + user['id']
-			r = requests.get(getUserURI, headers=headers)
-			userDetails = r.json()
-			groups = [int(d['id']) for d in userDetails['groups']]
-			groups.sort()
-			memberships[user['userName']].sort()
-			if not groups == memberships[user['userName']]:
-				updateUserURI = config['data']['booked_uri'] + "/Users/" + user['id']
-				user['groups'] = memberships[user['userName']]
-				r = requests.post(updateUserURI, data=json.dumps(user), headers=headers)
-				groups_strings = [str(gid) for gid in user['groups']]
-				print(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\tUpdated permissions for " + user['userName'] + " (GIDs: " + ", ".join(groups_strings) + ")")
+	for user in r.json()['users']:					# Loop through the list of users from LibreBooking
+		if user['userName'] in memberships:			# If they're in the memberships list
+			if memberships[user['userName']]['changed']:	# And the record has been updated since last sync
+				memberships[user['userName']]['changed'] = False
+				getUserURI = config['data']['librebooking_uri'] + "/Users/" + user['id']
+				r = requests.get(getUserURI, headers=headers)
+				userDetails = r.json()
+				groups = [int(d['id']) for d in userDetails['groups']]
+				groups.sort()
+				memberships[user['userName']]['groups'].sort()
+				if not groups == memberships[user['userName']]['groups']:
+					updateUserURI = config['data']['librebooking_uri'] + "/Users/" + user['id']
+					user['groups' = memberships[user['userName']]['groups']
+					r = requests.post(updateUserURI, data=json.dumps(user), headers=headers)
+					groups_strings = [str(gid) for gid in user['groups']]
+					print(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\tUpdated permissions for " + user['userName'] + " (GIDs: " + ", ".join(groups_strings) + ")")
+	signout(headers)
 
-	## Sign out of the session
-	signoutURI = config['data']['booked_uri'] + "/Authentication/SignOut"
-	signoutData = {'userId':auth['userId'],"sessionToken":auth['sessionToken']}
+def stale_all_memberships():
+	for user in memberships:
+		memberships[user]['changed'] = True
+
+## LibreBooking Authentication Routines
+def authenticate():
+	credentials = {'username':config['librebooking_credentials']['username'], 'password': config['librebooking_credentials']['password']}
+	authURI = config['data']['librebooking_uri'] + "/Authentication/Authenticate"
+	r = requests.post(authURI, data=json.dumps(credentials))
+	auth = r.json()
+	headers = {'X-Booked-SessionToken':auth['sessionToken'], 'X-Booked-UserId':auth['userId']}
+	return(headers)
+
+def signout(headers):
+	signoutURI = config['data']['librebooking_uri'] + "/Authentication/SignOut"
+	signoutData = {'userId':headers['X-Booked-UserId'],"sessionToken":headers['X-Booked-SessionToken']}
 	r = requests.post(signoutURI, data=json.dumps(signoutData))
 
-	time.sleep(interval)
+##
+## Scheduling
+##
+
+schedule.every().day.at("23:30").do(update_cmid_mapping)
+schedule.every(gradebook_interval).minutes.do(update_memberships)
+schedule.every(sync_interval).minutes.do(sync_memberships)
+schedule.every(full_resync).hours.do(stale_all_memberships)
+
+print("Moodle -> Librebooking Sync Starting")
+print("Gradebook pull interval:",gradebook_interval,"minutes")
+print("LibreBooking sync interval:",sync_interval,"minutes")
+
+# Initial population of the CMID map
+print("Initial pull for CMID map from LibreBooking: ", end='')
+update_cmid_mapping()
+print(len(cmid_mapping),"group mappings retrieved")
+
+# Initial population of memberships
+print("Initial pull of Moodle gradebook for memberships mapping: ", end='')
+update_memberships()
+print(len(memberships), "users retrieved")
+
+##
+## Main Loop
+##
+
+while True:
+    schedule.run_pending()
+    time.sleep(1)
