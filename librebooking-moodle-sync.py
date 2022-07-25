@@ -34,7 +34,7 @@ def update_cmid_mapping():
 	for group in lbGroups['groups']:
 		groupName = group['name']
 		if "|" in groupName:
-			cmid = groupName.split('|')[0].strip()
+			cmid = groupName.split('|')[0].strip().lower()
 			cmid_mapping[cmid] = int(group['id'])
 	signout(headers)
 
@@ -62,9 +62,9 @@ def sync_memberships():
 	getAllUsersURI = config['data']['booked_uri'] + "/Users/"
 	r = requests.get(getAllUsersURI, headers=headers)
 
-	for user in r.json()['users']:
-		if user['userName'] in memberships:
-			if memberships[user['userName']]['changed']:
+	for user in r.json()['users']:					# Loop through the list of users from LibreBooking
+		if user['userName'] in memberships:			# If they're in the memberships list
+			if memberships[user['userName']]['changed']:	# And the record has been updated since last sync
 				memberships[user['userName']]['changed'] = False
 				getUserURI = config['data']['booked_uri'] + "/Users/" + user['id']
 				r = requests.get(getUserURI, headers=headers)
@@ -110,12 +110,14 @@ schedule.every(full_resync).hours.do(stale_all_memberships)
 print("Moodle -> Librebooking Sync Starting")
 print("Gradebook pull interval:",gradebook_interval,"minutes")
 print("LibreBooking sync interval:",sync_interval,"minutes")
+
 # Initial population of the CMID map
 print("Initial pull for CMID map from LibreBooking: ", end='')
 update_cmid_mapping()
 print(len(cmid_mapping),"group mappings retrieved")
+
 # Initial population of memberships
-print("Initial pull for memberships list from Moodle: ", end='')
+print("Initial pull of Moodle gradebook for memberships mapping: ", end='')
 update_memberships()
 print(len(memberships), "users retrieved")
 
