@@ -84,6 +84,27 @@ def stale_all_memberships():
 	for user in memberships:
 		memberships[user]['changed'] = True
 
+## Removes unenrolled users from managed groups
+def cleanup_groups():
+	headers = authenticate()
+	getAllUsersURI = config['data']['librebooking_uri'] + "/Users/"
+	r = requests.get(getAllUsersURI, headers=headers)
+
+	for user in r.json()['users']:
+		if user['userName'] not in memberships:
+			getUserURI = config['data']['librebooking_uri'] + "/Users/" + user['id']
+			r = requests.get(getUserURI, headers=headers)
+			userDetails = r.json()
+			groups = [int(d['id']) for d in userDetails['groups']]
+			for cmid in cmid_mapping:
+				if cmid_mapping[cmid] in groups:
+					updateUserURI = config['data']['librebooking_uri'] + "/Users/" + user['id']
+					groups.remove(cmid_mapping[cmid])
+					user['groups'] = groups
+					r = requests.post(updateUserURI, data=json.dumps(user), headers=headers)
+					print(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\t" + user['userName'] + " is no longer enrolled, removed from managed groups.")
+	signout(headers)
+
 ## LibreBooking Authentication Routines
 def authenticate():
 	credentials = {'username':config['librebooking_credentials']['username'], 'password': config['librebooking_credentials']['password']}
@@ -103,6 +124,7 @@ def signout(headers):
 ##
 
 schedule.every().day.at("23:30").do(update_cmid_mapping)
+schedule.every().day.at("23:35").do(cleanup_groups)
 schedule.every(gradebook_interval).minutes.do(update_memberships)
 schedule.every(sync_interval).minutes.do(sync_memberships)
 schedule.every(full_resync).hours.do(stale_all_memberships)
