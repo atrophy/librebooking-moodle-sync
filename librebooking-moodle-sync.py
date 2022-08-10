@@ -7,12 +7,13 @@ import untangle
 import requests
 import json
 from datetime import datetime
+import os
 
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
 config = configparser.ConfigParser(interpolation=None)
-config.read('config/config.ini')
+config.read(os.path.join(os.path.dirname(__file__),'config/config.ini'))
 
 gradebook_interval = int(config['schedule']['gradebook_interval'])
 sync_interval = int(config['schedule']['librebooking_interval'])
@@ -91,7 +92,7 @@ def cleanup_groups():
 	r = requests.get(getAllUsersURI, headers=headers)
 
 	for user in r.json()['users']:
-		if user['userName'] not in memberships:
+		if user['userName'] not in memberships:	# If a user isn't in the 'memberships' list, they aren't enrolled and so shouldn't be in any managed groups.
 			getUserURI = config['data']['librebooking_uri'] + "/Users/" + user['id']
 			r = requests.get(getUserURI, headers=headers)
 			userDetails = r.json()
