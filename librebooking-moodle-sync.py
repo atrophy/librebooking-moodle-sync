@@ -43,7 +43,7 @@ def update_memberships():
 	try:
 		gradebook = untangle.parse(config['data']['gradebook_uri'])
 	except:
-		print("Error connecting to Moodle")
+		print(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\tError connecting to Moodle")
 		return
 
 	changedCount = 0
