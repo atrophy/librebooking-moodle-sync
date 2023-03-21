@@ -147,6 +147,7 @@ print("LibreBooking sync interval:",sync_interval,"minutes")
 print("Initial pull for CMID map from LibreBooking: ", end='')
 update_cmid_mapping()
 print(len(cmid_mapping),"group mappings retrieved")
+print(len(unmanaged_groups),"unmanaged groups found")
 
 # Initial population of memberships
 print("Initial pull of Moodle gradebook for memberships mapping: ", end='')
