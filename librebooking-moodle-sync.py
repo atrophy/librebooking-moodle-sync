@@ -21,7 +21,7 @@ full_resync = int(config['schedule']['full_resync'])
 
 cmid_mapping = {}	# Maps common-module IDs to LibreBooking Groups
 memberships = {}	# Holds group membership data for all enrolled users
-
+unmanaged_groups = {}	# Holds unmanaged groups from the LibreBooking Instance
 syncedUsers = 0
 
 def update_cmid_mapping():
@@ -37,6 +37,8 @@ def update_cmid_mapping():
 		if "|" in groupName:
 			cmid = groupName.split('|')[0].strip().lower()
 			cmid_mapping[cmid] = int(group['id'])
+		else:
+			unmanaged_groups[int(group['id'])] = groupName
 	signout(headers)
 
 def update_memberships():
@@ -71,8 +73,15 @@ def sync_memberships():
 				r = requests.get(getUserURI, headers=headers)
 				userDetails = r.json()
 				groups = [int(d['id']) for d in userDetails['groups']]
+
+				## Check if the user is in any unmanaged groups
+				for unmanagedGID in unmanaged_groups:
+					if unmanagedGID in groups:
+						memberships[user['userName']]['groups'].append(unmanagedGID)
+
 				groups.sort()
 				memberships[user['userName']]['groups'].sort()
+
 				if not groups == memberships[user['userName']]['groups']:
 					updateUserURI = config['data']['librebooking_uri'] + "/Users/" + user['id']
 					user['groups'] = memberships[user['userName']]['groups']
