@@ -77,7 +77,8 @@ def sync_memberships():
 				## Check if the user is in any unmanaged groups
 				for unmanagedGID in unmanaged_groups:
 					if unmanagedGID in groups:
-						memberships[user['userName']]['groups'].append(unmanagedGID)
+						if unmanagedGID not in memberships[user['userName']]['groups']:
+							memberships[user['userName']]['groups'].append(unmanagedGID)
 
 				groups.sort()
 				memberships[user['userName']]['groups'].sort()
